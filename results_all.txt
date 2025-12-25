@@ -1,0 +1,102 @@
+==== MODE=seq T=1 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=1, MODE=seq, TREE=bal
+Mode: seq (single-thread)
+Total found: 2500000
+Elapsed time: 0.042616 seconds
+==== MODE=seq T=2 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=2, MODE=seq, TREE=bal
+Mode: seq (single-thread)
+Total found: 2500000
+Elapsed time: 0.042900 seconds
+==== MODE=seq T=4 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=4, MODE=seq, TREE=bal
+Mode: seq (single-thread)
+Total found: 2500000
+Elapsed time: 0.042728 seconds
+==== MODE=seq T=8 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=8, MODE=seq, TREE=bal
+Mode: seq (single-thread)
+Total found: 2500000
+Elapsed time: 0.042593 seconds
+==== MODE=seq T=16 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=16, MODE=seq, TREE=bal
+Mode: seq (single-thread)
+Total found: 2500000
+Elapsed time: 0.043240 seconds
+==== MODE=seq T=32 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=32, MODE=seq, TREE=bal
+Mode: seq (single-thread)
+Total found: 2500000
+Elapsed time: 0.042898 seconds
+==== MODE=cg T=1 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=1, MODE=cg, TREE=bal
+Mode: cg (multithreaded)
+Total found: 2500000
+Elapsed time: 0.075486 seconds
+==== MODE=cg T=2 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=2, MODE=cg, TREE=bal
+Mode: cg (multithreaded)
+Total found: 2500000
+Elapsed time: 0.274069 seconds
+==== MODE=cg T=4 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=4, MODE=cg, TREE=bal
+Mode: cg (multithreaded)
+Total found: 2500000
+Elapsed time: 0.368781 seconds
+==== MODE=cg T=8 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=8, MODE=cg, TREE=bal
+Mode: cg (multithreaded)
+Total found: 2500000
+Elapsed time: 0.566707 seconds
+==== MODE=cg T=16 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=16, MODE=cg, TREE=bal
+Mode: cg (multithreaded)
+Total found: 2500000
+Elapsed time: 0.720450 seconds
+==== MODE=cg T=32 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=32, MODE=cg, TREE=bal
+Mode: cg (multithreaded)
+Total found: 2500000
+Elapsed time: 0.845344 seconds
+==== MODE=fg T=1 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=1, MODE=fg, TREE=bal
+Mode: fg (multithreaded)
+Total found: 2500000
+Elapsed time: 0.070776 seconds
+==== MODE=fg T=2 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=2, MODE=fg, TREE=bal
+Mode: fg (multithreaded)
+Total found: 2500000
+Elapsed time: 0.163765 seconds
+==== MODE=fg T=4 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=4, MODE=fg, TREE=bal
+Mode: fg (multithreaded)
+Total found: 2500000
+Elapsed time: 0.199573 seconds
+==== MODE=fg T=8 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=8, MODE=fg, TREE=bal
+Mode: fg (multithreaded)
+Total found: 2500000
+Elapsed time: 0.191564 seconds
+==== MODE=fg T=16 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=16, MODE=fg, TREE=bal
+Mode: fg (multithreaded)
+Total found: 2500000
+Elapsed time: 0.208055 seconds
+==== MODE=fg T=32 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=32, MODE=fg, TREE=bal
+Mode: fg (multithreaded)
+Total found: 2500000
+Elapsed time: 0.308142 seconds
+==== MODE=ideal T=1 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=1, MODE=ideal, TREE=bal
+==== MODE=ideal T=2 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=2, MODE=ideal, TREE=bal
+==== MODE=ideal T=4 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=4, MODE=ideal, TREE=bal
+==== MODE=ideal T=8 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=8, MODE=ideal, TREE=bal
+==== MODE=ideal T=16 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=16, MODE=ideal, TREE=bal
+==== MODE=ideal T=32 ====
+BST benchmark: N_INIT=100000, N_SEARCH=5000000, N_THREADS=32, MODE=ideal, TREE=bal

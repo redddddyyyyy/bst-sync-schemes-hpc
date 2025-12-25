@@ -1,0 +1,12 @@
+threads,mode,tree,elapsed
+1,seq,bal,0.045659
+1,cg,bal,0.071125
+2,cg,bal,0.256277
+4,cg,bal,0.404401
+8,cg,bal,0.552466
+16,cg,bal,0.712332
+1,fg,bal,0.074578
+2,fg,bal,0.159542
+4,fg,bal,0.203181
+8,fg,bal,0.196216
+16,fg,bal,0.240452
