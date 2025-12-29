@@ -1,0 +1,30 @@
+CC = gcc
+
+# Optional: set USE_PAPI=0 if papi isn't installed on a machine
+USE_PAPI ?= 1
+
+CFLAGS  = -O2 -Wall -Wextra -std=c11 -pthread -Iinclude
+LDFLAGS = -pthread
+
+ifeq ($(USE_PAPI),1)
+LDFLAGS += -lpapi
+endif
+
+PROGS = bench bst_cg bst_fg bst_ideal
+
+all: $(PROGS)
+
+bench: bench.c bst_seq.c papi_util.c include/bst.h
+	$(CC) $(CFLAGS) -o $@ bench.c bst_seq.c papi_util.c $(LDFLAGS)
+
+bst_cg: bst_cg.c papi_util.c include/bst.h
+	$(CC) $(CFLAGS) -o $@ bst_cg.c papi_util.c $(LDFLAGS)
+
+bst_fg: bst_fg.c papi_util.c include/bst.h
+	$(CC) $(CFLAGS) -o $@ bst_fg.c papi_util.c $(LDFLAGS)
+
+bst_ideal: bst_ideal.c papi_util.c include/bst.h
+	$(CC) $(CFLAGS) -o $@ bst_ideal.c papi_util.c $(LDFLAGS)
+
+clean:
+	rm -f $(PROGS) *.o

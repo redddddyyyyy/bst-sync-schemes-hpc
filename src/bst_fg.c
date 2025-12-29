@@ -10,7 +10,6 @@
 #include "bst.h"
 #include "papi_util.h"
 
-
 typedef struct {
     bst_t *tree;
     int   *keys;
@@ -18,6 +17,8 @@ typedef struct {
     long   count;
     long   found;
 } thread_arg_t;
+
+static pthread_rwlock_t g_tree_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 
 static double now_sec(void)
 {
@@ -29,18 +30,26 @@ static double now_sec(void)
     return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
 }
 
-static void *worker_ideal(void *arg)
+static void *worker_fg(void *arg)
 {
     thread_arg_t *a = (thread_arg_t *)arg;
     long local_found = 0;
 
+    // Per-thread counters start here
+    papi_start_counters();
+
     for (long i = 0; i < a->count; ++i) {
         int key = a->keys[a->start + i];
 
+        pthread_rwlock_rdlock(&g_tree_rwlock);
         if (bst_search_seq(a->tree, key)) {
             local_found++;
         }
+        pthread_rwlock_unlock(&g_tree_rwlock);
     }
+
+    // Per-thread counters stop + accumulate totals
+    papi_stop_and_accum();
 
     a->found = local_found;
     return NULL;
@@ -49,10 +58,10 @@ static void *worker_ideal(void *arg)
 static void usage(const char *prog)
 {
     fprintf(stderr,
-        "Usage: %s N_INIT N_SEARCH N_THREADS [TREE]\\n"
-        "  TREE = bal (default, perfectly balanced)\\n"
-        "         seq (sequential inserts 0..N_INIT-1)\\n"
-        "         rand (random inserts)\\n",
+        "Usage: %s N_INIT N_SEARCH N_THREADS [TREE]\n"
+        "  TREE = bal  (default, perfectly balanced)\n"
+        "         seq  (sequential inserts 0..N_INIT-1)\n"
+        "         rand (random inserts)\n",
         prog);
 }
 
@@ -63,19 +72,22 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    long N_init   = strtol(argv[1], NULL, 10);
-    long N_search = strtol(argv[2], NULL, 10);
+    long N_init    = strtol(argv[1], NULL, 10);
+    long N_search  = strtol(argv[2], NULL, 10);
     long N_threads = strtol(argv[3], NULL, 10);
     const char *tree_mode = (argc == 5) ? argv[4] : "bal";
 
     if (N_init <= 0 || N_search <= 0 || N_threads <= 0) {
-        fprintf(stderr, "All numeric arguments must be positive.\\n");
+        fprintf(stderr, "All numeric arguments must be positive.\n");
         return EXIT_FAILURE;
     }
 
+    printf("BST benchmark: N_INIT=%ld, N_SEARCH=%ld, N_THREADS=%ld, MODE=fg, TREE=%s\n",
+           N_init, N_search, N_threads, tree_mode);
+
     bst_t *tree = bst_create();
     if (!tree) {
-        fprintf(stderr, "bst_create failed\\n");
+        fprintf(stderr, "bst_create failed\n");
         return EXIT_FAILURE;
     }
 
@@ -86,14 +98,14 @@ int main(int argc, char **argv)
     } else if (strcmp(tree_mode, "rand") == 0) {
         bst_build_random(tree, (int)N_init);
     } else {
-        fprintf(stderr, "Unknown TREE mode '%s'\\n", tree_mode);
+        fprintf(stderr, "Unknown TREE mode '%s'\n", tree_mode);
         bst_destroy(tree);
         return EXIT_FAILURE;
     }
 
-    int *search_keys = malloc(sizeof(int) * (size_t)N_search);
+    int *search_keys = (int *)malloc(sizeof(int) * (size_t)N_search);
     if (!search_keys) {
-        fprintf(stderr, "malloc failed for search_keys\\n");
+        fprintf(stderr, "malloc failed for search_keys\n");
         bst_destroy(tree);
         return EXIT_FAILURE;
     }
@@ -101,12 +113,12 @@ int main(int argc, char **argv)
         search_keys[i] = (int)(i % (2 * N_init));
     }
 
-    papi_init_or_die();
-
-    pthread_t *threads = malloc(sizeof(pthread_t) * (size_t)N_threads);
-    thread_arg_t *args = malloc(sizeof(thread_arg_t) * (size_t)N_threads);
+    pthread_t *threads = (pthread_t *)malloc(sizeof(pthread_t) * (size_t)N_threads);
+    thread_arg_t *args = (thread_arg_t *)malloc(sizeof(thread_arg_t) * (size_t)N_threads);
     if (!threads || !args) {
-        fprintf(stderr, "malloc failed for thread structures\\n");
+        fprintf(stderr, "malloc failed for thread structures\n");
+        free(threads);
+        free(args);
         free(search_keys);
         bst_destroy(tree);
         return EXIT_FAILURE;
@@ -126,19 +138,24 @@ int main(int argc, char **argv)
         offset += chunk;
     }
 
-    double t0 = now_sec();
-    papi_start_counters();
+    // Init PAPI once + reset totals for this run
+    papi_init_or_die();
+    papi_reset_totals();
 
+    double t0 = now_sec();
+
+    long threads_created = 0;
     for (long t = 0; t < N_threads; ++t) {
-        if (pthread_create(&threads[t], NULL, worker_ideal, &args[t]) != 0) {
+        if (pthread_create(&threads[t], NULL, worker_fg, &args[t]) != 0) {
             perror("pthread_create");
-            N_threads = t;
+            threads_created = t;
             break;
         }
+        threads_created = t + 1;
     }
 
     long total_found = 0;
-    for (long t = 0; t < N_threads; ++t) {
+    for (long t = 0; t < threads_created; ++t) {
         if (pthread_join(threads[t], NULL) != 0) {
             perror("pthread_join");
         } else {
@@ -146,18 +163,18 @@ int main(int argc, char **argv)
         }
     }
 
-    papi_stop_and_print();
     double t1 = now_sec();
 
-    double elapsed = t1 - t0;
-    double throughput = (elapsed > 0.0)
-        ? (double)N_search / elapsed / 1e6
-        : 0.0;
+    // Print TOTAL counters across all threads
+    papi_print_totals();
 
-    printf("Mode: ideal (no locks, read‑only)\\n");
-    printf("Total found: %ld\\n", total_found);
-    printf("Elapsed time: %.6f seconds\\n", elapsed);
-    printf("Throughput: %.2f M ops/s\\n", throughput);
+    double elapsed = t1 - t0;
+    double throughput = (elapsed > 0.0) ? (double)N_search / elapsed / 1e6 : 0.0;
+
+    printf("Mode: fg (global RW-lock)\n");
+    printf("Total found: %ld\n", total_found);
+    printf("Elapsed time: %.6f seconds\n", elapsed);
+    printf("Throughput: %.2f M ops/s\n", throughput);
 
     free(threads);
     free(args);
@@ -166,3 +183,4 @@ int main(int argc, char **argv)
 
     return EXIT_SUCCESS;
 }
+
