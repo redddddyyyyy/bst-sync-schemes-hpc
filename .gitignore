@@ -12,3 +12,10 @@ __pycache__/
 *.swp
 
 .venv/
+
+# build artifacts
+bench
+bst_cg
+bst_fg
+bst_ideal
+*.o
