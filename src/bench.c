@@ -46,12 +46,18 @@ static void *worker_cg(void *arg)
     thread_arg_t *a = (thread_arg_t *)arg;
     long local_found = 0;
 
+    // Per-thread counters start here
+    papi_start_counters();
+
     for (long i = 0; i < a->count; ++i) {
         int key = a->keys[a->start + i];
         if (bst_search_cg(a->tree, key)) {
             local_found++;
         }
     }
+
+    // Per-thread counters stop + add into global totals
+    papi_stop_and_accum();
 
     a->found = local_found;
     return NULL;
@@ -63,12 +69,16 @@ static void *worker_fg(void *arg)
     thread_arg_t *a = (thread_arg_t *)arg;
     long local_found = 0;
 
+    papi_start_counters();
+
     for (long i = 0; i < a->count; ++i) {
         int key = a->keys[a->start + i];
         if (bst_search_fg(a->tree, key)) {
             local_found++;
         }
     }
+
+    papi_stop_and_accum();
 
     a->found = local_found;
     return NULL;
@@ -80,6 +90,8 @@ static void *worker_ideal(void *arg)
     thread_arg_t *a = (thread_arg_t *)arg;
     long local_found = 0;
 
+    papi_start_counters();
+
     for (long i = 0; i < a->count; ++i) {
         int key = a->keys[a->start + i];
         /* Read-only search on an immutable tree: safe without locks */
@@ -87,6 +99,8 @@ static void *worker_ideal(void *arg)
             local_found++;
         }
     }
+
+    papi_stop_and_accum();
 
     a->found = local_found;
     return NULL;
@@ -133,7 +147,7 @@ int main(int argc, char **argv)
     }
 
     /* Allocate and fill search keys */
-    int *search_keys = (int *)malloc(sizeof(int) * N_search);
+    int *search_keys = (int *)malloc(sizeof(int) * (size_t)N_search);
     if (!search_keys) {
         fprintf(stderr, "malloc failed for search_keys\n");
         bst_destroy(tree);
@@ -144,24 +158,27 @@ int main(int argc, char **argv)
         search_keys[i] = (int)(i % (2 * N_init));
     }
 
-    /* Init PAPI once (your papi_util.c should not abort on failure) */
+    /* Init PAPI once */
     papi_init_or_die();
 
     /* --- Sequential baseline: single-threaded search --- */
     if (strcmp(mode, "seq") == 0) {
         long found = 0;
 
+        papi_reset_totals();
         double t0 = now_sec();
-        papi_start_counters();
 
+        papi_start_counters();
         for (long i = 0; i < N_search; ++i) {
             if (bst_search_seq(tree, search_keys[i])) {
                 found++;
             }
         }
+        papi_stop_and_accum();
 
-        papi_stop_and_print();
         double t1 = now_sec();
+
+        papi_print_totals();
 
         printf("Mode: seq (single-thread)\n");
         printf("Total found: %ld\n", found);
@@ -172,10 +189,12 @@ int main(int argc, char **argv)
              strcmp(mode, "fg") == 0 ||
              strcmp(mode, "ideal") == 0)
     {
-        pthread_t    *threads = (pthread_t *)malloc(sizeof(pthread_t) * nthreads);
-        thread_arg_t *args    = (thread_arg_t *)malloc(sizeof(thread_arg_t) * nthreads);
+        pthread_t    *threads = (pthread_t *)malloc(sizeof(pthread_t) * (size_t)nthreads);
+        thread_arg_t *args    = (thread_arg_t *)malloc(sizeof(thread_arg_t) * (size_t)nthreads);
         if (!threads || !args) {
             fprintf(stderr, "malloc failed for threads/args\n");
+            free(threads);
+            free(args);
             free(search_keys);
             bst_destroy(tree);
             return EXIT_FAILURE;
@@ -195,8 +214,8 @@ int main(int argc, char **argv)
             offset       += cnt;
         }
 
+        papi_reset_totals();
         double t0 = now_sec();
-        papi_start_counters();
 
         for (int t = 0; t < nthreads; ++t) {
             void *(*fn)(void *);
@@ -210,6 +229,8 @@ int main(int argc, char **argv)
 
             if (pthread_create(&threads[t], NULL, fn, &args[t]) != 0) {
                 fprintf(stderr, "pthread_create failed for thread %d\n", t);
+                // join what we started (best effort)
+                for (int j = 0; j < t; ++j) pthread_join(threads[j], NULL);
                 free(threads);
                 free(args);
                 free(search_keys);
@@ -222,13 +243,14 @@ int main(int argc, char **argv)
             pthread_join(threads[t], NULL);
         }
 
-        papi_stop_and_print();
         double t1 = now_sec();
 
         long total_found = 0;
         for (int t = 0; t < nthreads; ++t) {
             total_found += args[t].found;
         }
+
+        papi_print_totals();
 
         printf("Mode: %s (multithreaded)\n", mode);
         printf("Total found: %ld\n", total_found);
@@ -238,15 +260,15 @@ int main(int argc, char **argv)
         free(args);
     }
     else {
-        usage(argv[0]);
+        fprintf(stderr, "Unknown MODE '%s'\n", mode);
         free(search_keys);
         bst_destroy(tree);
+        usage(argv[0]);
         return EXIT_FAILURE;
     }
 
     free(search_keys);
     bst_destroy(tree);
-
     return EXIT_SUCCESS;
 }
 
