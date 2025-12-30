@@ -1,16 +1,4 @@
-# build outputs
-bin/
-*.o
-
-# python / venv
-.venv/
-__pycache__/
-*.pyc
-
-# OS/editor junk
-.DS_Store
-*.swp
-
+# venv
 .venv/
 
 # build artifacts
@@ -19,3 +7,11 @@ bst_cg
 bst_fg
 bst_ideal
 *.o
+*.out
+*.log
+
+# common cruft
+*~
+*.swp
+.DS_Store
+
