@@ -1,62 +1,55 @@
-# BST Synchronization Schemes (HPC Benchmark) — C / Pthreads
+# BST Synchronization Schemes — HPC Benchmark
 
-Benchmarking a Binary Search Tree (BST) search workload under multiple synchronization schemes to study scalability, contention, and throughput as thread count increases. Optional hardware counters are collected via **PAPI**.
+[![C](https://img.shields.io/badge/C-99-blue?style=flat&logo=c&logoColor=white)](https://en.wikipedia.org/wiki/C99)
+[![Pthreads](https://img.shields.io/badge/Pthreads-Multithreading-green?style=flat)](https://en.wikipedia.org/wiki/Pthreads)
+[![PAPI](https://img.shields.io/badge/PAPI-Hardware_Counters-orange?style=flat)](https://icl.utk.edu/papi/)
 
-## What’s in this repo
-
-- `src/` — C source code (bench + modes + PAPI wrapper)
-- `include/` — headers
-- `scripts/` — reproducible sweep + summarize + plot scripts
-- `data/results_raw.csv` — raw measurements (all reps)
-- `results.csv` — summarized results (mean/std + IPC)
-- `plots/` — generated plots (throughput + speedup)
-- `docs/` — report / supporting docs (if present)
-
-## Modes
-
-Run everything through the `bench` driver:
-
-- `seq`   — sequential search (no locks)
-- `cg`    — coarse-grained global mutex
-- `fg`    — global RW-lock (concurrent readers)
-- `ideal` — parallel read-only search, no locks (upper bound)
-
-Tree construction options:
-
-- `bal`  — perfectly balanced (default)
-- `seq`  — sequential inserts `0..N_INIT-1` (unbalanced)
-- `rand` — random insert order
+Benchmarking Binary Search Tree (BST) search operations under multiple synchronization schemes to analyze **scalability**, **contention**, and **throughput** as thread count increases.
 
 ---
 
-## Build
+## Results
 
-### Requirements
-- `gcc` + `make`
-- `pthread` (standard on Linux)
-- **Optional:** PAPI (only needed for hardware counters)
-- Python (only needed for plots)
+### Throughput Scaling
+![Throughput vs Threads](plots/throughput_bal_all_modes.png)
 
-### Compile
+### Speedup Analysis
+![Speedup vs Threads](plots/speedup_bal_all_modes.png)
+
+---
+
+## Synchronization Modes
+
+| Mode | Strategy | Use Case |
+|------|----------|----------|
+| `seq` | No locks (sequential baseline) | Single-threaded reference |
+| `cg` | Coarse-grained global mutex | Simple but high contention |
+| `fg` | Fine-grained RW-lock | Concurrent readers allowed |
+| `ideal` | Lock-free parallel reads | Upper bound (read-only) |
+
+---
+
+## Quick Start
+
+### Build
+
 ```bash
-make clean
-make USE_PAPI=1   # enable PAPI support (recommended if installed)
-# or:
-make USE_PAPI=0   # build without PAPI
+# With PAPI hardware counters (recommended)
+make clean && make USE_PAPI=1
 
-# Run (single experiment)
+# Without PAPI
+make clean && make USE_PAPI=0
+```
 
-# Usage:
+### Run Single Experiment
 
-./bench N_INIT N_SEARCH N_THREADS MODE [TREE]
-
-
-Examples:
+```bash
+# Usage: ./bench N_INIT N_SEARCH N_THREADS MODE [TREE]
 
 # Sequential baseline
 PAPI=1 ./bench 1000000 50000000 1 seq bal
 
-# Coarse-grained lock (8 threads)
+# Coarse-grained (8 threads)
 PAPI=1 ./bench 1000000 50000000 8 cg bal
 
 # Fine-grained RW-lock (8 threads)
@@ -64,45 +57,70 @@ PAPI=1 ./bench 1000000 50000000 8 fg bal
 
 # Ideal upper bound (8 threads)
 PAPI=1 ./bench 1000000 50000000 8 ideal bal
+```
 
+---
 
-Notes:
+## Reproduce Full Experiment
 
-Set PAPI=1 to enable counters at runtime (if compiled with USE_PAPI=1).
-
-If PAPI is unavailable or blocked, the benchmark still runs and prints timing normally.
-
-# Reproduce the full experiment 
-
-This reproduces the full sweep, writes raw CSV, summarizes into results.csv, and generates plots into plots/.
-
-1) Run sweep (raw data)
+```bash
+# 1. Run sweep (generates raw data)
 chmod +x scripts/run_sweep.sh
 ./scripts/run_sweep.sh
+# Output: data/results_raw.csv
 
-
-Output:
-
-data/results_raw.csv
-
-2) Summarize results (means/std/IPC)
+# 2. Summarize results (mean/std/IPC)
 python3 scripts/summarize_results.py
+# Output: results.csv
 
-
-Output:
-
-results.csv
-
-3) Generate plots (venv recommended)
-python3 -m venv .venv
-source .venv/bin/activate
+# 3. Generate plots
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python3 scripts/plot_results.py
 deactivate
+# Output: plots/
+```
 
+---
 
-Output:
+## Tree Construction Options
 
-plots/throughput_vs_threads_bal.png
+| Option | Description |
+|--------|-------------|
+| `bal` | Perfectly balanced tree (default) |
+| `seq` | Sequential inserts 0..N-1 (worst case) |
+| `rand` | Random insertion order |
 
-plots/speedup_vs_threads_bal.png
+---
+
+## Repository Structure
+
+```
+├── src/              # C source (bench + modes + PAPI wrapper)
+├── include/          # Header files
+├── scripts/          # Automation scripts
+│   ├── run_sweep.sh
+│   ├── summarize_results.py
+│   └── plot_results.py
+├── data/             # Raw measurement CSVs
+├── plots/            # Generated visualizations
+└── docs/             # Reports and documentation
+```
+
+---
+
+## Requirements
+
+| Component | Required | Notes |
+|-----------|----------|-------|
+| GCC | Yes | C99 compatible |
+| Make | Yes | Build system |
+| Pthreads | Yes | Standard on Linux |
+| PAPI | Optional | Hardware counters |
+| Python 3 | Optional | Only for plotting |
+
+---
+
+## License
+
+MIT
