@@ -15,7 +15,7 @@ endif
 BIN := bin
 SRC := src
 
-COMMON := $(SRC)/bst_seq.c $(SRC)/papi_util.c
+COMMON := $(SRC)/bst_seq.c $(SRC)/papi_util.c $(SRC)/workload.c
 
 PROGS := $(BIN)/bench $(BIN)/bst_cg $(BIN)/bst_rwlock $(BIN)/bst_ideal
 
