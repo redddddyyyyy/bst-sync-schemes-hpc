@@ -18,8 +18,6 @@ typedef struct {
     long   found;
 } thread_arg_t;
 
-static pthread_rwlock_t g_tree_rwlock = PTHREAD_RWLOCK_INITIALIZER;
-
 static double now_sec(void)
 {
     struct timespec ts;
@@ -41,11 +39,9 @@ static void *worker_rwlock(void *arg)
     for (long i = 0; i < a->count; ++i) {
         int key = a->keys[a->start + i];
 
-        pthread_rwlock_rdlock(&g_tree_rwlock);
         if (bst_search_rwlock(a->tree, key)) {
             local_found++;
         }
-        pthread_rwlock_unlock(&g_tree_rwlock);
     }
 
     // Per-thread counters stop + accumulate totals
