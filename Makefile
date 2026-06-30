@@ -50,6 +50,9 @@ $(BIN)/tests/%: tests/%.c $(COMMON) | $(BIN)/tests
 
 tests: $(TEST_BINS)
 	@set -e; for t in $(TEST_BINS); do echo "== Running $$t =="; $$t; done
+	@set -e; for sh in tests/test_*.sh; do \
+		if [ -x "$$sh" ]; then echo "== Running $$sh =="; "$$sh"; fi; \
+	done
 	@echo "All tests passed."
 
 .PHONY: tests

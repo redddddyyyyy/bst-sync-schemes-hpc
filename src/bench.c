@@ -9,6 +9,7 @@
 
 #include "bst.h"
 #include "papi_util.h"
+#include "workload.h"
 
 /* Simple wall-clock helper using CLOCK_MONOTONIC */
 static double now_sec(void)
@@ -106,8 +107,133 @@ static void *worker_ideal(void *arg)
     return NULL;
 }
 
+/* Parse "R/I/D" into three ints. Returns 0 on success, nonzero on parse error. */
+static int parse_mix(const char *s, int *r, int *i, int *d) {
+    if (!s) return 1;
+    return (sscanf(s, "%d/%d/%d", r, i, d) == 3) ? 0 : 2;
+}
+
+/* Dispatch a single mixed op against the chosen mode. */
+static int run_op(const char *mode, bst_t *tree, const wl_op_t *op) {
+    /* For Day 1 we only have search implementations for all modes;
+       insert/delete fall back to bst_*_seq variants where present,
+       guarded by the mode's lock for cg/rwlock. Day 2+ will replace
+       these with mode-specific insert/delete. */
+    if (op->kind == WL_OP_SEARCH) {
+        if (strcmp(mode, "cg") == 0)     return bst_search_cg(tree, op->key);
+        if (strcmp(mode, "rwlock") == 0) return bst_search_rwlock(tree, op->key);
+        return bst_search_seq(tree, op->key);
+    }
+    if (op->kind == WL_OP_INSERT) {
+        if (strcmp(mode, "cg") == 0)     { bst_insert_cg(tree, op->key); return 0; }
+        if (strcmp(mode, "rwlock") == 0) { bst_insert_rwlock(tree, op->key); return 0; }
+        bst_insert_seq(tree, op->key);   return 0;
+    }
+    /* WL_OP_DELETE: not implemented yet (Day 2). For now: treat as search to keep
+       the op-count books correct without lying about the mode's behavior. */
+    if (strcmp(mode, "cg") == 0)     return bst_search_cg(tree, op->key);
+    if (strcmp(mode, "rwlock") == 0) return bst_search_rwlock(tree, op->key);
+    return bst_search_seq(tree, op->key);
+}
+
 int main(int argc, char **argv)
 {
+    /* New-style CLI: starts with one or more `--flag value` pairs,
+       followed by the legacy positionals (N_INIT N_THREADS MODE [TREE]).
+       Note N_SEARCH is replaced by --ops in this path. */
+    int   wl_pct_s = -1, wl_pct_i = -1, wl_pct_d = -1;
+    long  wl_ops   = -1;
+    uint64_t wl_seed = 0;
+    int   arg_i = 1;
+
+    while (arg_i < argc && strncmp(argv[arg_i], "--", 2) == 0) {
+        const char *flag = argv[arg_i];
+        const char *val  = (arg_i + 1 < argc) ? argv[arg_i + 1] : NULL;
+        if (!val) { fprintf(stderr, "Flag %s needs a value\n", flag); return EXIT_FAILURE; }
+
+        if (strcmp(flag, "--mix") == 0) {
+            if (parse_mix(val, &wl_pct_s, &wl_pct_i, &wl_pct_d) != 0) {
+                fprintf(stderr, "--mix expects R/I/D, got '%s'\n", val);
+                return EXIT_FAILURE;
+            }
+        } else if (strcmp(flag, "--ops") == 0) {
+            wl_ops = strtol(val, NULL, 10);
+        } else if (strcmp(flag, "--seed") == 0) {
+            wl_seed = (uint64_t)strtoull(val, NULL, 10);
+        } else {
+            fprintf(stderr, "Unknown flag '%s'\n", flag);
+            return EXIT_FAILURE;
+        }
+        arg_i += 2;
+    }
+
+    int use_workload = (wl_pct_s >= 0 && wl_ops > 0);
+
+    /* After the flag block, what follows depends on the path. */
+    if (use_workload) {
+        /* New CLI: N_INIT N_THREADS MODE [TREE] */
+        int remaining = argc - arg_i;
+        if (remaining < 3 || remaining > 4) {
+            fprintf(stderr,
+                "Usage: %s [--mix R/I/D --ops N --seed S] N_INIT N_THREADS MODE [TREE]\n",
+                argv[0]);
+            return EXIT_FAILURE;
+        }
+        long N_init    = strtol(argv[arg_i++], NULL, 10);
+        int  nthreads  = atoi(argv[arg_i++]);
+        const char *mode      = argv[arg_i++];
+        const char *tree_mode = (arg_i < argc) ? argv[arg_i] : "bal";
+
+        if (N_init <= 0 || nthreads <= 0) {
+            fprintf(stderr, "N_INIT and N_THREADS must be positive.\n");
+            return EXIT_FAILURE;
+        }
+
+        bst_t *tree = bst_create();
+        if (!tree) { fprintf(stderr, "bst_create failed\n"); return EXIT_FAILURE; }
+        if      (strcmp(tree_mode, "bal")  == 0) bst_build_balanced(tree, (int)N_init);
+        else if (strcmp(tree_mode, "seq")  == 0) bst_build_sequential(tree, (int)N_init);
+        else if (strcmp(tree_mode, "rand") == 0) bst_build_random(tree, (int)N_init);
+        else { fprintf(stderr, "Unknown TREE '%s'\n", tree_mode); bst_destroy(tree); return EXIT_FAILURE; }
+
+        wl_op_t *ops = (wl_op_t *)malloc(sizeof(wl_op_t) * (size_t)wl_ops);
+        if (!ops) { fprintf(stderr, "malloc failed\n"); bst_destroy(tree); return EXIT_FAILURE; }
+
+        int rc = wl_generate(ops, (size_t)wl_ops, wl_pct_s, wl_pct_i, wl_pct_d,
+                             (int)N_init, wl_seed);
+        if (rc != 0) {
+            fprintf(stderr, "wl_generate rc=%d\n", rc);
+            free(ops); bst_destroy(tree); return EXIT_FAILURE;
+        }
+
+        /* Single-threaded execution for Day 1; multithreaded mixed runner lands Day 3. */
+        long c_s = 0, c_i = 0, c_d = 0;
+        long found = 0;
+        struct timespec ts0, ts1;
+        clock_gettime(CLOCK_MONOTONIC, &ts0);
+        for (long k = 0; k < wl_ops; ++k) {
+            if (ops[k].kind == WL_OP_SEARCH) { found += run_op(mode, tree, &ops[k]); c_s++; }
+            else if (ops[k].kind == WL_OP_INSERT) { run_op(mode, tree, &ops[k]); c_i++; }
+            else { run_op(mode, tree, &ops[k]); c_d++; }
+        }
+        clock_gettime(CLOCK_MONOTONIC, &ts1);
+        double elapsed = (ts1.tv_sec - ts0.tv_sec) + (ts1.tv_nsec - ts0.tv_nsec)*1e-9;
+
+        printf("Mode: %s (mixed)\n", mode);
+        printf("ops_search=%ld ops_insert=%ld ops_delete=%ld\n", c_s, c_i, c_d);
+        printf("found=%ld elapsed=%.6f throughput=%.2f Mops/s\n",
+               found, elapsed, (elapsed > 0.0) ? (double)wl_ops / elapsed / 1e6 : 0.0);
+        printf("Total found: %ld\n", found);
+        printf("Elapsed time: %.6f seconds\n", elapsed);
+
+        free(ops);
+        bst_destroy(tree);
+        (void)nthreads; /* Day 1 single-thread; flag retained for CLI shape */
+        return EXIT_SUCCESS;
+    }
+
+    /* ===== Legacy positional CLI below (unchanged from pre-rename behavior, with fg->rwlock) ===== */
+
     if (argc != 5 && argc != 6) {
         usage(argv[0]);
         return EXIT_FAILURE;

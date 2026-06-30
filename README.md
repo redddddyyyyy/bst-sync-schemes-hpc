@@ -63,6 +63,20 @@ PAPI=1 ./bench 1000000 50000000 8 rwlock bal
 PAPI=1 ./bench 1000000 50000000 8 ideal bal
 ```
 
+### Mixed workload (read/insert/delete) — new
+
+The new flag-style CLI runs a deterministic mixed workload:
+
+    ./bin/bench --mix 80/15/5 --ops 1000000 --seed 42 1000000 8 rwlock bal
+
+  --mix R/I/D   percent search / insert / delete (must sum to 100)
+  --ops N       total operations
+  --seed S      RNG seed for the workload generator
+  N_INIT        initial tree size (positional)
+  N_THREADS     thread count (positional, single-thread until Day 3)
+  MODE          seq | cg | rwlock | ideal
+  TREE          bal | seq | rand
+
 ---
 
 ## Reproduce Full Experiment
