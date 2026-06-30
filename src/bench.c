@@ -32,7 +32,7 @@ static void usage(const char *prog)
         "Usage: %s N_INIT N_SEARCH N_THREADS MODE [TREE]\n"
         "  MODE = seq    (sequential search, no locks)\n"
         "         cg     (coarse-grained global mutex)\n"
-        "         fg     (global RW-lock, readers concurrent)\n"
+        "         rwlock (global RW-lock, readers concurrent)\n"
         "         ideal  (parallel search, read-only, no locks)\n"
         "  TREE = bal    (default, perfectly balanced)\n"
         "         seq    (sequential inserts 0..N_INIT-1, unbalanced)\n"
@@ -63,8 +63,8 @@ static void *worker_cg(void *arg)
     return NULL;
 }
 
-/* Worker for FG RW-lock multithreaded search */
-static void *worker_fg(void *arg)
+/* Worker for RW-lock multithreaded search */
+static void *worker_rwlock(void *arg)
 {
     thread_arg_t *a = (thread_arg_t *)arg;
     long local_found = 0;
@@ -73,7 +73,7 @@ static void *worker_fg(void *arg)
 
     for (long i = 0; i < a->count; ++i) {
         int key = a->keys[a->start + i];
-        if (bst_search_fg(a->tree, key)) {
+        if (bst_search_rwlock(a->tree, key)) {
             local_found++;
         }
     }
@@ -184,9 +184,9 @@ int main(int argc, char **argv)
         printf("Total found: %ld\n", found);
         printf("Elapsed time: %.6f seconds\n", t1 - t0);
     }
-    /* --- Multithreaded modes: cg, fg, ideal --- */
+    /* --- Multithreaded modes: cg, rwlock, ideal --- */
     else if (strcmp(mode, "cg") == 0 ||
-             strcmp(mode, "fg") == 0 ||
+             strcmp(mode, "rwlock") == 0 ||
              strcmp(mode, "ideal") == 0)
     {
         pthread_t    *threads = (pthread_t *)malloc(sizeof(pthread_t) * (size_t)nthreads);
@@ -221,8 +221,8 @@ int main(int argc, char **argv)
             void *(*fn)(void *);
             if (strcmp(mode, "cg") == 0) {
                 fn = worker_cg;
-            } else if (strcmp(mode, "fg") == 0) {
-                fn = worker_fg;
+            } else if (strcmp(mode, "rwlock") == 0) {
+                fn = worker_rwlock;
             } else { /* ideal */
                 fn = worker_ideal;
             }

@@ -55,7 +55,7 @@ done
 for th in "${THREADS_LIST[@]}"; do
   for rep in $(seq 1 "$REPS"); do
     run_one cg    "$TREE" "$N_INIT" "$N_SEARCH" "$th" "$rep"
-    run_one fg    "$TREE" "$N_INIT" "$N_SEARCH" "$th" "$rep"
+    run_one rwlock "$TREE" "$N_INIT" "$N_SEARCH" "$th" "$rep"
     run_one ideal "$TREE" "$N_INIT" "$N_SEARCH" "$th" "$rep"
   done
 done

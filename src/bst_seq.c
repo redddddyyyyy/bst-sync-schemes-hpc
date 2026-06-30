@@ -157,14 +157,14 @@ int bst_search_cg(bst_t *tree, int key)
 }
 
 
-void bst_insert_fg(bst_t *tree, int key)
+void bst_insert_rwlock(bst_t *tree, int key)
 {
     pthread_rwlock_wrlock(&tree->rwlock);
     tree->root = insert_rec(tree->root, key);
     pthread_rwlock_unlock(&tree->rwlock);
 }
 
-int bst_search_fg(bst_t *tree, int key)
+int bst_search_rwlock(bst_t *tree, int key)
 {
     int res;
     pthread_rwlock_rdlock(&tree->rwlock);

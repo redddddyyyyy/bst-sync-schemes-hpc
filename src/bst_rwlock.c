@@ -30,7 +30,7 @@ static double now_sec(void)
     return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
 }
 
-static void *worker_fg(void *arg)
+static void *worker_rwlock(void *arg)
 {
     thread_arg_t *a = (thread_arg_t *)arg;
     long local_found = 0;
@@ -42,7 +42,7 @@ static void *worker_fg(void *arg)
         int key = a->keys[a->start + i];
 
         pthread_rwlock_rdlock(&g_tree_rwlock);
-        if (bst_search_seq(a->tree, key)) {
+        if (bst_search_rwlock(a->tree, key)) {
             local_found++;
         }
         pthread_rwlock_unlock(&g_tree_rwlock);
@@ -82,7 +82,7 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    printf("BST benchmark: N_INIT=%ld, N_SEARCH=%ld, N_THREADS=%ld, MODE=fg, TREE=%s\n",
+    printf("BST benchmark: N_INIT=%ld, N_SEARCH=%ld, N_THREADS=%ld, MODE=rwlock, TREE=%s\n",
            N_init, N_search, N_threads, tree_mode);
 
     bst_t *tree = bst_create();
@@ -146,7 +146,7 @@ int main(int argc, char **argv)
 
     long threads_created = 0;
     for (long t = 0; t < N_threads; ++t) {
-        if (pthread_create(&threads[t], NULL, worker_fg, &args[t]) != 0) {
+        if (pthread_create(&threads[t], NULL, worker_rwlock, &args[t]) != 0) {
             perror("pthread_create");
             threads_created = t;
             break;
@@ -171,7 +171,7 @@ int main(int argc, char **argv)
     double elapsed = t1 - t0;
     double throughput = (elapsed > 0.0) ? (double)N_search / elapsed / 1e6 : 0.0;
 
-    printf("Mode: fg (global RW-lock)\n");
+    printf("Mode: rwlock (global RW-lock)\n");
     printf("Total found: %ld\n", total_found);
     printf("Elapsed time: %.6f seconds\n", elapsed);
     printf("Throughput: %.2f M ops/s\n", throughput);

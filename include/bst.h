@@ -20,9 +20,9 @@ int  bst_search_seq(bst_t *tree, int key);
 void bst_insert_cg(bst_t *tree, int key);
 int  bst_search_cg(bst_t *tree, int key);
 
-// Fine-grained (RW-lock) operations
-void bst_insert_fg(bst_t *tree, int key);
-int  bst_search_fg(bst_t *tree, int key);
+// Global RW-lock operations (NOT per-node; see docs/analysis.md)
+void bst_insert_rwlock(bst_t *tree, int key);
+int  bst_search_rwlock(bst_t *tree, int key);
 
 #endif
 

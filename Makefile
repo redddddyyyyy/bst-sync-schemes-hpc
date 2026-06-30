@@ -17,7 +17,7 @@ SRC := src
 
 COMMON := $(SRC)/bst_seq.c $(SRC)/papi_util.c
 
-PROGS := $(BIN)/bench $(BIN)/bst_cg $(BIN)/bst_fg $(BIN)/bst_ideal
+PROGS := $(BIN)/bench $(BIN)/bst_cg $(BIN)/bst_rwlock $(BIN)/bst_ideal
 
 all: $(PROGS)
 
@@ -30,8 +30,8 @@ $(BIN)/bench: $(BIN) $(SRC)/bench.c $(COMMON)
 $(BIN)/bst_cg: $(BIN) $(SRC)/bst_cg.c $(COMMON)
 	$(CC) $(CFLAGS) -o $@ $(SRC)/bst_cg.c $(COMMON) $(LDFLAGS)
 
-$(BIN)/bst_fg: $(BIN) $(SRC)/bst_fg.c $(COMMON)
-	$(CC) $(CFLAGS) -o $@ $(SRC)/bst_fg.c $(COMMON) $(LDFLAGS)
+$(BIN)/bst_rwlock: $(BIN) $(SRC)/bst_rwlock.c $(COMMON)
+	$(CC) $(CFLAGS) -o $@ $(SRC)/bst_rwlock.c $(COMMON) $(LDFLAGS)
 
 $(BIN)/bst_ideal: $(BIN) $(SRC)/bst_ideal.c $(COMMON)
 	$(CC) $(CFLAGS) -o $@ $(SRC)/bst_ideal.c $(COMMON) $(LDFLAGS)
