@@ -24,8 +24,10 @@ Benchmarking Binary Search Tree (BST) search operations under multiple synchroni
 |------|----------|----------|
 | `seq` | No locks (sequential baseline) | Single-threaded reference |
 | `cg` | Coarse-grained global mutex | Simple but high contention |
-| `fg` | Fine-grained RW-lock | Concurrent readers allowed |
+| `fg` | Global RW-lock | Concurrent readers, but writers serialize the whole tree |
 | `ideal` | Lock-free parallel reads | Upper bound (read-only) |
+
+> Note: `fg` is a single tree-wide `pthread_rwlock_t`, not per-node "fine-grained" locking. Real per-node hand-over-hand and lock-free variants are planned additions; this baseline keeps the name `fg` for now to preserve compatibility with existing data files and the sweep script.
 
 ---
 
@@ -52,7 +54,7 @@ PAPI=1 ./bench 1000000 50000000 1 seq bal
 # Coarse-grained (8 threads)
 PAPI=1 ./bench 1000000 50000000 8 cg bal
 
-# Fine-grained RW-lock (8 threads)
+# Global RW-lock (8 threads)
 PAPI=1 ./bench 1000000 50000000 8 fg bal
 
 # Ideal upper bound (8 threads)
