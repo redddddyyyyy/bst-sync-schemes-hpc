@@ -2,16 +2,16 @@
 .venv/
 
 # build artifacts
-bench
-bst_cg
-bst_fg
-bst_ideal
+bin/
 *.o
 *.out
 *.log
+
+# planning + scratch (kept local, never published)
+docs/superpowers/
+.superpowers/
 
 # common cruft
 *~
 *.swp
 .DS_Store
-

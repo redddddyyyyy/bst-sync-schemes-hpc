@@ -27,9 +27,7 @@ Benchmarking Binary Search Tree (BST) search operations under multiple synchroni
 | `rwlock` | Global RW-lock | Concurrent readers, but writers serialize the whole tree |
 | `ideal` | Lock-free parallel reads | Upper bound (read-only) |
 
-> Note: `rwlock` — global RW-lock (concurrent readers). This was previously
-> labeled "fg" (fine-grained); renamed for honesty — true per-node
-> fine-grained locking is implemented in `bst_handover` (added on Day 2).
+> Note: `rwlock` is a single tree-wide `pthread_rwlock_t` — concurrent readers, but writers serialize the whole tree. The lock is not per-node.
 
 ---
 
@@ -63,19 +61,23 @@ PAPI=1 ./bench 1000000 50000000 8 rwlock bal
 PAPI=1 ./bench 1000000 50000000 8 ideal bal
 ```
 
-### Mixed workload (read/insert/delete) — new
+### Mixed workload (read / insert / delete)
 
-The new flag-style CLI runs a deterministic mixed workload:
+The flag-style CLI runs a deterministic mixed workload:
 
-    ./bin/bench --mix 80/15/5 --ops 1000000 --seed 42 1000000 8 rwlock bal
+```bash
+./bin/bench --mix 80/15/5 --ops 1000000 --seed 42 1000000 8 rwlock bal
+```
 
-  --mix R/I/D   percent search / insert / delete (must sum to 100)
-  --ops N       total operations
-  --seed S      RNG seed for the workload generator
-  N_INIT        initial tree size (positional)
-  N_THREADS     thread count (positional, single-thread until Day 3)
-  MODE          seq | cg | rwlock | ideal
-  TREE          bal | seq | rand
+| Argument | Meaning |
+|---|---|
+| `--mix R/I/D` | percent search / insert / delete (must sum to 100) |
+| `--ops N` | total operations |
+| `--seed S` | RNG seed for the workload generator |
+| `N_INIT` | initial tree size (positional) |
+| `N_THREADS` | thread count (positional; mixed CLI is single-threaded) |
+| `MODE` | `seq`, `cg`, `rwlock`, `ideal` |
+| `TREE` | `bal`, `seq`, `rand` |
 
 ---
 

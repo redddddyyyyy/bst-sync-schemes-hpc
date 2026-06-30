@@ -113,12 +113,11 @@ static int parse_mix(const char *s, int *r, int *i, int *d) {
     return (sscanf(s, "%d/%d/%d", r, i, d) == 3) ? 0 : 2;
 }
 
-/* Dispatch a single mixed op against the chosen mode. */
+/* Dispatch a single mixed op against the chosen mode.
+   Inserts use the mode-specific bst_insert_*. There is no bst_delete_*
+   primitive, so WL_OP_DELETE falls back to a search — the op-count
+   totals stay honest without claiming mode-specific delete behavior. */
 static int run_op(const char *mode, bst_t *tree, const wl_op_t *op) {
-    /* For Day 1 we only have search implementations for all modes;
-       insert/delete fall back to bst_*_seq variants where present,
-       guarded by the mode's lock for cg/rwlock. Day 2+ will replace
-       these with mode-specific insert/delete. */
     if (op->kind == WL_OP_SEARCH) {
         if (strcmp(mode, "cg") == 0)     return bst_search_cg(tree, op->key);
         if (strcmp(mode, "rwlock") == 0) return bst_search_rwlock(tree, op->key);
@@ -129,8 +128,7 @@ static int run_op(const char *mode, bst_t *tree, const wl_op_t *op) {
         if (strcmp(mode, "rwlock") == 0) { bst_insert_rwlock(tree, op->key); return 0; }
         bst_insert_seq(tree, op->key);   return 0;
     }
-    /* WL_OP_DELETE: not implemented yet (Day 2). For now: treat as search to keep
-       the op-count books correct without lying about the mode's behavior. */
+    /* WL_OP_DELETE: no BST primitive available; treat as a search. */
     if (strcmp(mode, "cg") == 0)     return bst_search_cg(tree, op->key);
     if (strcmp(mode, "rwlock") == 0) return bst_search_rwlock(tree, op->key);
     return bst_search_seq(tree, op->key);
@@ -206,7 +204,8 @@ int main(int argc, char **argv)
             free(ops); bst_destroy(tree); return EXIT_FAILURE;
         }
 
-        /* Single-threaded execution for Day 1; multithreaded mixed runner lands Day 3. */
+        /* Mixed workloads execute single-threaded; the nthreads positional is parsed
+           for CLI-shape parity with the positional path but not honored here. */
         long c_s = 0, c_i = 0, c_d = 0;
         long found = 0;
         struct timespec ts0, ts1;
@@ -219,16 +218,16 @@ int main(int argc, char **argv)
         clock_gettime(CLOCK_MONOTONIC, &ts1);
         double elapsed = (ts1.tv_sec - ts0.tv_sec) + (ts1.tv_nsec - ts0.tv_nsec)*1e-9;
 
-        printf("Mode: %s (mixed)\n", mode);
+        printf("Mode: %s (mixed, single-threaded)\n", mode);
         printf("ops_search=%ld ops_insert=%ld ops_delete=%ld\n", c_s, c_i, c_d);
-        printf("found=%ld elapsed=%.6f throughput=%.2f Mops/s\n",
-               found, elapsed, (elapsed > 0.0) ? (double)wl_ops / elapsed / 1e6 : 0.0);
         printf("Total found: %ld\n", found);
         printf("Elapsed time: %.6f seconds\n", elapsed);
+        printf("Throughput: %.2f M ops/s\n",
+               (elapsed > 0.0) ? (double)wl_ops / elapsed / 1e6 : 0.0);
 
         free(ops);
         bst_destroy(tree);
-        (void)nthreads; /* Day 1 single-thread; flag retained for CLI shape */
+        (void)nthreads;
         return EXIT_SUCCESS;
     }
 

@@ -1,5 +1,4 @@
 #include "workload.h"
-#include <stdlib.h>
 
 /* xorshift64* — deterministic, fast, sufficient for benchmark workloads.
    NOT cryptographic; NOT thread-shared. */
