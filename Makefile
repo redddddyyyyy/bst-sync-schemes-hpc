@@ -8,6 +8,8 @@ PAPI_HOME ?= $(HOME)/papi-local
 ifeq ($(USE_PAPI),1)
 CFLAGS  += -DUSE_PAPI=1 -I$(PAPI_HOME)/include
 LDFLAGS += -L$(PAPI_HOME)/lib -Wl,-rpath,$(PAPI_HOME)/lib -lpapi
+else
+CFLAGS  += -DUSE_PAPI=0
 endif
 
 BIN := bin
@@ -37,3 +39,17 @@ $(BIN)/bst_ideal: $(BIN) $(SRC)/bst_ideal.c $(COMMON)
 clean:
 	rm -rf $(BIN) *.o
 
+TEST_SRCS := $(wildcard tests/test_*.c)
+TEST_BINS := $(patsubst tests/%.c,$(BIN)/tests/%,$(TEST_SRCS))
+
+$(BIN)/tests:
+	mkdir -p $(BIN)/tests
+
+$(BIN)/tests/%: tests/%.c $(COMMON) | $(BIN)/tests
+	$(CC) $(CFLAGS) -Itests -o $@ $< $(COMMON) $(LDFLAGS)
+
+tests: $(TEST_BINS)
+	@set -e; for t in $(TEST_BINS); do echo "== Running $$t =="; $$t; done
+	@echo "All tests passed."
+
+.PHONY: tests
