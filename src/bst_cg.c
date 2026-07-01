@@ -96,7 +96,7 @@ int main(int argc, char **argv)
     } else if (strcmp(tree_mode, "seq") == 0) {
         bst_build_sequential(tree, (int)N_init);
     } else if (strcmp(tree_mode, "rand") == 0) {
-        bst_build_random(tree, (int)N_init);
+        bst_build_random(tree, (int)N_init, 0);
     } else {
         fprintf(stderr, "Unknown TREE mode '%s'\n", tree_mode);
         bst_destroy(tree);

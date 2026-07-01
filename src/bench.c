@@ -152,7 +152,7 @@ static void handover_insert_balanced(bst_handover_t *tree, int lo, int hi)
 /* Populate a fresh handover tree with n_keys keys, mirroring the shape
    contract of bst_build_balanced/_sequential/_random for the bst_t-based
    algorithms. Returns 0 on success, nonzero for an unknown tree_mode. */
-static int build_handover_tree(bst_handover_t *tree, int n_keys, const char *tree_mode)
+static int build_handover_tree(bst_handover_t *tree, int n_keys, const char *tree_mode, uint64_t seed)
 {
     if (strcmp(tree_mode, "bal") == 0) {
         handover_insert_balanced(tree, 0, n_keys - 1);
@@ -166,7 +166,7 @@ static int build_handover_tree(bst_handover_t *tree, int n_keys, const char *tre
         int *keys = (int *)malloc(sizeof(int) * (size_t)n_keys);
         if (!keys) return -1;
         for (int i = 0; i < n_keys; ++i) keys[i] = i;
-        srand((unsigned)time(NULL));
+        srand((unsigned int)seed);
         for (int i = n_keys - 1; i > 0; --i) {
             int j = rand() % (i + 1);
             int tmp = keys[i];
@@ -272,7 +272,7 @@ int main(int argc, char **argv)
         if (is_handover) {
             tree_ho = bst_handover_create();
             if (!tree_ho) { fprintf(stderr, "bst_handover_create failed\n"); return EXIT_FAILURE; }
-            if (build_handover_tree(tree_ho, (int)N_init, tree_mode) != 0) {
+            if (build_handover_tree(tree_ho, (int)N_init, tree_mode, wl_seed) != 0) {
                 fprintf(stderr, "Unknown TREE '%s'\n", tree_mode);
                 bst_handover_destroy(tree_ho);
                 return EXIT_FAILURE;
@@ -283,7 +283,7 @@ int main(int argc, char **argv)
             if (!tree) { fprintf(stderr, "bst_create failed\n"); return EXIT_FAILURE; }
             if      (strcmp(tree_mode, "bal")  == 0) bst_build_balanced(tree, (int)N_init);
             else if (strcmp(tree_mode, "seq")  == 0) bst_build_sequential(tree, (int)N_init);
-            else if (strcmp(tree_mode, "rand") == 0) bst_build_random(tree, (int)N_init);
+            else if (strcmp(tree_mode, "rand") == 0) bst_build_random(tree, (int)N_init, wl_seed);
             else { fprintf(stderr, "Unknown TREE '%s'\n", tree_mode); bst_destroy(tree); return EXIT_FAILURE; }
             tree_generic = tree;
         }
@@ -364,7 +364,7 @@ int main(int argc, char **argv)
             fprintf(stderr, "bst_handover_create failed\n");
             return EXIT_FAILURE;
         }
-        if (build_handover_tree(tree_ho, (int)N_init, tree_mode) != 0) {
+        if (build_handover_tree(tree_ho, (int)N_init, tree_mode, wl_seed) != 0) {
             fprintf(stderr, "Unknown TREE mode '%s'\n", tree_mode);
             bst_handover_destroy(tree_ho);
             return EXIT_FAILURE;
@@ -381,7 +381,7 @@ int main(int argc, char **argv)
         } else if (strcmp(tree_mode, "seq") == 0) {
             bst_build_sequential(tree, (int)N_init);
         } else if (strcmp(tree_mode, "rand") == 0) {
-            bst_build_random(tree, (int)N_init);
+            bst_build_random(tree, (int)N_init, wl_seed);
         } else {
             fprintf(stderr, "Unknown TREE mode '%s'\n", tree_mode);
             bst_destroy(tree);

@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include "bst.h"
-#include <time.h>
+
 typedef struct node {
     int key;
     struct node *left;
@@ -104,7 +104,7 @@ void bst_build_sequential(bst_t *tree, int n_keys)
     }
 }
 
-void bst_build_random(bst_t *tree, int n_keys)
+void bst_build_random(bst_t *tree, int n_keys, uint64_t seed)
 {
     tree->root = NULL;
 
@@ -115,7 +115,7 @@ void bst_build_random(bst_t *tree, int n_keys)
         keys[i] = i;
     }
 
-    srand((unsigned)time(NULL));
+    srand((unsigned int)seed);
     for (int i = n_keys - 1; i > 0; --i) {
         int j = rand() % (i + 1);
         int tmp = keys[i];

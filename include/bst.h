@@ -1,6 +1,8 @@
 #ifndef BST_H
 #define BST_H
 
+#include <stdint.h>
+
 typedef struct bst bst_t;
 
 // Create / destroy tree
@@ -10,7 +12,7 @@ void   bst_destroy(bst_t *tree);
 // Build trees
 void bst_build_balanced(bst_t *tree, int n_keys);  // keys [0, n_keys-1], perfect BST
 void bst_build_sequential(bst_t *tree, int n_keys); // insert 0..n-1 in order (unbalanced)
-void bst_build_random(bst_t *tree, int n_keys);     // insert 0..n-1 in random order
+void bst_build_random(bst_t *tree, int n_keys, uint64_t seed);  // insert 0..n-1 in random order; seed drives the shuffle
 
 // Sequential (no-lock) operations
 void bst_insert_seq(bst_t *tree, int key);
