@@ -21,7 +21,8 @@ static double now_sec(void)
 }
 
 typedef struct {
-    bst_t *tree;
+    bst_t          *tree;            /* used by cg / rwlock / ideal */
+    bst_handover_t *tree_handover;   /* used by handover */
     int   *keys;
     long   start;
     long   count;
@@ -119,7 +120,7 @@ static void *worker_handover(void *arg)
 
     for (long i = 0; i < a->count; ++i) {
         int key = a->keys[a->start + i];
-        if (bst_handover_search((bst_handover_t *)a->tree, key)) {
+        if (bst_handover_search(a->tree_handover, key)) {
             local_found++;
         }
     }
@@ -136,28 +137,78 @@ static int parse_mix(const char *s, int *r, int *i, int *d) {
     return (sscanf(s, "%d/%d/%d", r, i, d) == 3) ? 0 : 2;
 }
 
+/* Insert [lo, hi] into a handover tree in the same root-first, then-left,
+   then-right order build_balanced_range() uses to build a bst_t, so
+   bst_handover_insert() produces the same shape as bst_build_balanced(). */
+static void handover_insert_balanced(bst_handover_t *tree, int lo, int hi)
+{
+    if (lo > hi) return;
+    int mid = lo + (hi - lo) / 2;
+    bst_handover_insert(tree, mid);
+    handover_insert_balanced(tree, lo, mid - 1);
+    handover_insert_balanced(tree, mid + 1, hi);
+}
+
+/* Populate a fresh handover tree with n_keys keys, mirroring the shape
+   contract of bst_build_balanced/_sequential/_random for the bst_t-based
+   algorithms. Returns 0 on success, nonzero for an unknown tree_mode. */
+static int build_handover_tree(bst_handover_t *tree, int n_keys, const char *tree_mode)
+{
+    if (strcmp(tree_mode, "bal") == 0) {
+        handover_insert_balanced(tree, 0, n_keys - 1);
+        return 0;
+    }
+    if (strcmp(tree_mode, "seq") == 0) {
+        for (int k = 0; k < n_keys; ++k) bst_handover_insert(tree, k);
+        return 0;
+    }
+    if (strcmp(tree_mode, "rand") == 0) {
+        int *keys = (int *)malloc(sizeof(int) * (size_t)n_keys);
+        if (!keys) return -1;
+        for (int i = 0; i < n_keys; ++i) keys[i] = i;
+        srand((unsigned)time(NULL));
+        for (int i = n_keys - 1; i > 0; --i) {
+            int j = rand() % (i + 1);
+            int tmp = keys[i];
+            keys[i] = keys[j];
+            keys[j] = tmp;
+        }
+        for (int i = 0; i < n_keys; ++i) bst_handover_insert(tree, keys[i]);
+        free(keys);
+        return 0;
+    }
+    return -1;
+}
+
 /* Dispatch a single mixed op against the chosen mode.
    Inserts use the mode-specific bst_insert_*. There is no bst_delete_*
    primitive, so WL_OP_DELETE falls back to a search — the op-count
-   totals stay honest without claiming mode-specific delete behavior. */
-static int run_op(const char *mode, bst_t *tree, const wl_op_t *op) {
+   totals stay honest without claiming mode-specific delete behavior.
+   `tree` points at a bst_handover_t when mode is "handover" and at a
+   bst_t for every other mode; the caller guarantees the pointer matches
+   the mode so the cast below always targets the object's real type. */
+static int run_op(const char *mode, void *tree, const wl_op_t *op) {
+    if (strcmp(mode, "handover") == 0) {
+        bst_handover_t *ho = (bst_handover_t *)tree;
+        if (op->kind == WL_OP_INSERT) { bst_handover_insert(ho, op->key); return 0; }
+        return bst_handover_search(ho, op->key);  /* search, or delete-as-search */
+    }
+
+    bst_t *t = (bst_t *)tree;
     if (op->kind == WL_OP_SEARCH) {
-        if (strcmp(mode, "cg") == 0)       return bst_search_cg(tree, op->key);
-        if (strcmp(mode, "rwlock") == 0)   return bst_search_rwlock(tree, op->key);
-        if (strcmp(mode, "handover") == 0) return bst_handover_search((bst_handover_t *)tree, op->key);
-        return bst_search_seq(tree, op->key);
+        if (strcmp(mode, "cg") == 0)       return bst_search_cg(t, op->key);
+        if (strcmp(mode, "rwlock") == 0)   return bst_search_rwlock(t, op->key);
+        return bst_search_seq(t, op->key);
     }
     if (op->kind == WL_OP_INSERT) {
-        if (strcmp(mode, "cg") == 0)       { bst_insert_cg(tree, op->key); return 0; }
-        if (strcmp(mode, "rwlock") == 0)   { bst_insert_rwlock(tree, op->key); return 0; }
-        if (strcmp(mode, "handover") == 0) { bst_handover_insert((bst_handover_t *)tree, op->key); return 0; }
-        bst_insert_seq(tree, op->key);     return 0;
+        if (strcmp(mode, "cg") == 0)       { bst_insert_cg(t, op->key); return 0; }
+        if (strcmp(mode, "rwlock") == 0)   { bst_insert_rwlock(t, op->key); return 0; }
+        bst_insert_seq(t, op->key);        return 0;
     }
     /* WL_OP_DELETE: no BST primitive available; treat as a search. */
-    if (strcmp(mode, "cg") == 0)       return bst_search_cg(tree, op->key);
-    if (strcmp(mode, "rwlock") == 0)   return bst_search_rwlock(tree, op->key);
-    if (strcmp(mode, "handover") == 0) return bst_handover_search((bst_handover_t *)tree, op->key);
-    return bst_search_seq(tree, op->key);
+    if (strcmp(mode, "cg") == 0)       return bst_search_cg(t, op->key);
+    if (strcmp(mode, "rwlock") == 0)   return bst_search_rwlock(t, op->key);
+    return bst_search_seq(t, op->key);
 }
 
 int main(int argc, char **argv)
@@ -213,21 +264,44 @@ int main(int argc, char **argv)
             return EXIT_FAILURE;
         }
 
-        bst_t *tree = bst_create();
-        if (!tree) { fprintf(stderr, "bst_create failed\n"); return EXIT_FAILURE; }
-        if      (strcmp(tree_mode, "bal")  == 0) bst_build_balanced(tree, (int)N_init);
-        else if (strcmp(tree_mode, "seq")  == 0) bst_build_sequential(tree, (int)N_init);
-        else if (strcmp(tree_mode, "rand") == 0) bst_build_random(tree, (int)N_init);
-        else { fprintf(stderr, "Unknown TREE '%s'\n", tree_mode); bst_destroy(tree); return EXIT_FAILURE; }
+        int is_handover = (strcmp(mode, "handover") == 0);
+        bst_t          *tree    = NULL;
+        bst_handover_t *tree_ho = NULL;
+        void           *tree_generic = NULL;
+
+        if (is_handover) {
+            tree_ho = bst_handover_create();
+            if (!tree_ho) { fprintf(stderr, "bst_handover_create failed\n"); return EXIT_FAILURE; }
+            if (build_handover_tree(tree_ho, (int)N_init, tree_mode) != 0) {
+                fprintf(stderr, "Unknown TREE '%s'\n", tree_mode);
+                bst_handover_destroy(tree_ho);
+                return EXIT_FAILURE;
+            }
+            tree_generic = tree_ho;
+        } else {
+            tree = bst_create();
+            if (!tree) { fprintf(stderr, "bst_create failed\n"); return EXIT_FAILURE; }
+            if      (strcmp(tree_mode, "bal")  == 0) bst_build_balanced(tree, (int)N_init);
+            else if (strcmp(tree_mode, "seq")  == 0) bst_build_sequential(tree, (int)N_init);
+            else if (strcmp(tree_mode, "rand") == 0) bst_build_random(tree, (int)N_init);
+            else { fprintf(stderr, "Unknown TREE '%s'\n", tree_mode); bst_destroy(tree); return EXIT_FAILURE; }
+            tree_generic = tree;
+        }
 
         wl_op_t *ops = (wl_op_t *)malloc(sizeof(wl_op_t) * (size_t)wl_ops);
-        if (!ops) { fprintf(stderr, "malloc failed\n"); bst_destroy(tree); return EXIT_FAILURE; }
+        if (!ops) {
+            fprintf(stderr, "malloc failed\n");
+            if (is_handover) bst_handover_destroy(tree_ho); else bst_destroy(tree);
+            return EXIT_FAILURE;
+        }
 
         int rc = wl_generate(ops, (size_t)wl_ops, wl_pct_s, wl_pct_i, wl_pct_d,
                              (int)N_init, wl_seed);
         if (rc != 0) {
             fprintf(stderr, "wl_generate rc=%d\n", rc);
-            free(ops); bst_destroy(tree); return EXIT_FAILURE;
+            free(ops);
+            if (is_handover) bst_handover_destroy(tree_ho); else bst_destroy(tree);
+            return EXIT_FAILURE;
         }
 
         /* Mixed workloads execute single-threaded; the nthreads positional is parsed
@@ -237,9 +311,9 @@ int main(int argc, char **argv)
         struct timespec ts0, ts1;
         clock_gettime(CLOCK_MONOTONIC, &ts0);
         for (long k = 0; k < wl_ops; ++k) {
-            if (ops[k].kind == WL_OP_SEARCH) { found += run_op(mode, tree, &ops[k]); c_s++; }
-            else if (ops[k].kind == WL_OP_INSERT) { run_op(mode, tree, &ops[k]); c_i++; }
-            else { run_op(mode, tree, &ops[k]); c_d++; }
+            if (ops[k].kind == WL_OP_SEARCH) { found += run_op(mode, tree_generic, &ops[k]); c_s++; }
+            else if (ops[k].kind == WL_OP_INSERT) { run_op(mode, tree_generic, &ops[k]); c_i++; }
+            else { run_op(mode, tree_generic, &ops[k]); c_d++; }
         }
         clock_gettime(CLOCK_MONOTONIC, &ts1);
         double elapsed = (ts1.tv_sec - ts0.tv_sec) + (ts1.tv_nsec - ts0.tv_nsec)*1e-9;
@@ -252,7 +326,7 @@ int main(int argc, char **argv)
                (elapsed > 0.0) ? (double)wl_ops / elapsed / 1e6 : 0.0);
 
         free(ops);
-        bst_destroy(tree);
+        if (is_handover) bst_handover_destroy(tree_ho); else bst_destroy(tree);
         (void)nthreads;
         return EXIT_SUCCESS;
     }
@@ -278,30 +352,48 @@ int main(int argc, char **argv)
     printf("BST benchmark: N_INIT=%ld, N_SEARCH=%ld, N_THREADS=%d, MODE=%s, TREE=%s\n",
            N_init, N_search, nthreads, mode, tree_mode);
 
-    /* Build tree according to tree_mode */
-    bst_t *tree = bst_create();
-    if (!tree) {
-        fprintf(stderr, "bst_create failed\n");
-        return EXIT_FAILURE;
-    }
+    /* Build tree according to tree_mode. handover mode uses its own tree
+       type; every other mode uses the bst_t-based algorithms' tree. */
+    int is_handover = (strcmp(mode, "handover") == 0);
+    bst_t          *tree    = NULL;
+    bst_handover_t *tree_ho = NULL;
 
-    if (strcmp(tree_mode, "bal") == 0) {
-        bst_build_balanced(tree, (int)N_init);
-    } else if (strcmp(tree_mode, "seq") == 0) {
-        bst_build_sequential(tree, (int)N_init);
-    } else if (strcmp(tree_mode, "rand") == 0) {
-        bst_build_random(tree, (int)N_init);
+    if (is_handover) {
+        tree_ho = bst_handover_create();
+        if (!tree_ho) {
+            fprintf(stderr, "bst_handover_create failed\n");
+            return EXIT_FAILURE;
+        }
+        if (build_handover_tree(tree_ho, (int)N_init, tree_mode) != 0) {
+            fprintf(stderr, "Unknown TREE mode '%s'\n", tree_mode);
+            bst_handover_destroy(tree_ho);
+            return EXIT_FAILURE;
+        }
     } else {
-        fprintf(stderr, "Unknown TREE mode '%s'\n", tree_mode);
-        bst_destroy(tree);
-        return EXIT_FAILURE;
+        tree = bst_create();
+        if (!tree) {
+            fprintf(stderr, "bst_create failed\n");
+            return EXIT_FAILURE;
+        }
+
+        if (strcmp(tree_mode, "bal") == 0) {
+            bst_build_balanced(tree, (int)N_init);
+        } else if (strcmp(tree_mode, "seq") == 0) {
+            bst_build_sequential(tree, (int)N_init);
+        } else if (strcmp(tree_mode, "rand") == 0) {
+            bst_build_random(tree, (int)N_init);
+        } else {
+            fprintf(stderr, "Unknown TREE mode '%s'\n", tree_mode);
+            bst_destroy(tree);
+            return EXIT_FAILURE;
+        }
     }
 
     /* Allocate and fill search keys */
     int *search_keys = (int *)malloc(sizeof(int) * (size_t)N_search);
     if (!search_keys) {
         fprintf(stderr, "malloc failed for search_keys\n");
-        bst_destroy(tree);
+        if (is_handover) bst_handover_destroy(tree_ho); else bst_destroy(tree);
         return EXIT_FAILURE;
     }
 
@@ -348,7 +440,7 @@ int main(int argc, char **argv)
             free(threads);
             free(args);
             free(search_keys);
-            bst_destroy(tree);
+            if (is_handover) bst_handover_destroy(tree_ho); else bst_destroy(tree);
             return EXIT_FAILURE;
         }
 
@@ -357,13 +449,14 @@ int main(int argc, char **argv)
         long offset = 0;
 
         for (int t = 0; t < nthreads; ++t) {
-            long cnt      = base + (t < rem ? 1 : 0);
-            args[t].tree  = tree;
-            args[t].keys  = search_keys;
-            args[t].start = offset;
-            args[t].count = cnt;
-            args[t].found = 0;
-            offset       += cnt;
+            long cnt              = base + (t < rem ? 1 : 0);
+            args[t].tree          = tree;
+            args[t].tree_handover = tree_ho;
+            args[t].keys          = search_keys;
+            args[t].start         = offset;
+            args[t].count         = cnt;
+            args[t].found         = 0;
+            offset               += cnt;
         }
 
         papi_reset_totals();
@@ -388,7 +481,7 @@ int main(int argc, char **argv)
                 free(threads);
                 free(args);
                 free(search_keys);
-                bst_destroy(tree);
+                if (is_handover) bst_handover_destroy(tree_ho); else bst_destroy(tree);
                 return EXIT_FAILURE;
             }
         }
@@ -422,7 +515,7 @@ int main(int argc, char **argv)
     }
 
     free(search_keys);
-    bst_destroy(tree);
+    if (is_handover) bst_handover_destroy(tree_ho); else bst_destroy(tree);
     return EXIT_SUCCESS;
 }
 
