@@ -25,9 +25,12 @@ Benchmarking Binary Search Tree (BST) search operations under multiple synchroni
 | `seq` | No locks (sequential baseline) | Single-threaded reference |
 | `cg` | Coarse-grained global mutex | Simple but high contention |
 | `rwlock` | Global RW-lock | Concurrent readers, but writers serialize the whole tree |
+| `handover` | Per-node hand-over-hand locking | Concurrent ops in disjoint subtrees |
 | `ideal` | Lock-free parallel reads | Upper bound (read-only) |
 
-> Note: `rwlock` is a single tree-wide `pthread_rwlock_t` — concurrent readers, but writers serialize the whole tree. The lock is not per-node.
+> Notes:
+> - `rwlock` is a single tree-wide `pthread_rwlock_t` — concurrent readers, but writers serialize the whole tree.
+> - `handover` carries a per-node `std::mutex` and uses hand-over-hand (lock-coupling) descent. Threads holding locks in disjoint subtrees do not contend.
 
 ---
 
@@ -76,7 +79,7 @@ The flag-style CLI runs a deterministic mixed workload:
 | `--seed S` | RNG seed for the workload generator |
 | `N_INIT` | initial tree size (positional) |
 | `N_THREADS` | thread count (positional; mixed CLI is single-threaded) |
-| `MODE` | `seq`, `cg`, `rwlock`, `ideal` |
+| `MODE` | `seq`, `cg`, `rwlock`, `handover`, `ideal` |
 | `TREE` | `bal`, `seq`, `rand` |
 
 ---

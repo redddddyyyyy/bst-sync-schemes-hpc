@@ -68,7 +68,7 @@ $(BIN)/tests/%: tests/%.c $(ALL_OBJS) | $(BIN)/tests
 $(BIN)/tests/%: tests/%.cpp $(ALL_OBJS) | $(BIN)/tests
 	$(CXX) $(CXXFLAGS) -Itests -o $@ $< $(ALL_OBJS) $(LDFLAGS)
 
-tests: $(TEST_BINS)
+tests: $(BIN)/bench $(TEST_BINS)
 	@set -e; for t in $(TEST_BINS); do echo "== Running $$t =="; $$t; done
 	@set -e; for sh in tests/test_*.sh; do \
 		if [ -x "$$sh" ]; then echo "== Running $$sh =="; "$$sh"; fi; \
@@ -76,3 +76,21 @@ tests: $(TEST_BINS)
 	@echo "All tests passed."
 
 .PHONY: tests
+
+# ThreadSanitizer build (requires recent gcc/clang)
+TSAN_FLAGS := -fsanitize=thread -g -O1
+tsan: clean
+	$(MAKE) USE_PAPI=0 \
+	  CFLAGS="$(CFLAGS) $(TSAN_FLAGS)" \
+	  CXXFLAGS="$(CXXFLAGS) $(TSAN_FLAGS)" \
+	  LDFLAGS="$(LDFLAGS) -fsanitize=thread" \
+	  $(BIN)/tests/test_handover_stress
+	@echo "=== Running test_handover_stress under ThreadSanitizer ==="
+	@# setarch -R disables ASLR: on kernels with high-entropy mmap layouts,
+	@# ThreadSanitizer's runtime can fail to start with "unexpected memory
+	@# mapping" before any of our code runs. This does not change what
+	@# ThreadSanitizer checks for races; it only fixes process startup.
+	@TSAN_OPTIONS=halt_on_error=1 setarch $$(uname -m) -R $(BIN)/tests/test_handover_stress
+	@echo "=== TSan run finished cleanly ==="
+
+.PHONY: tsan
