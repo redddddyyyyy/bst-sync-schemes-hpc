@@ -11,6 +11,13 @@ bin/
 docs/superpowers/
 .superpowers/
 
+# symlinked portfolio docs (live in flat dir, kept local)
+PORTFOLIO_PLAN.md
+instructions.md
+
+# untracked rerun CSVs (originals under data/ are shipped)
+data/results_rerun.csv
+
 # common cruft
 *~
 *.swp
