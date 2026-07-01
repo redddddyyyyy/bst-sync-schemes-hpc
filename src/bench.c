@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "bst.h"
+#include "bst_handover.h"
 #include "papi_util.h"
 #include "workload.h"
 
@@ -31,13 +32,14 @@ static void usage(const char *prog)
 {
     fprintf(stderr,
         "Usage: %s N_INIT N_SEARCH N_THREADS MODE [TREE]\n"
-        "  MODE = seq    (sequential search, no locks)\n"
-        "         cg     (coarse-grained global mutex)\n"
-        "         rwlock (global RW-lock, readers concurrent)\n"
-        "         ideal  (parallel search, read-only, no locks)\n"
-        "  TREE = bal    (default, perfectly balanced)\n"
-        "         seq    (sequential inserts 0..N_INIT-1, unbalanced)\n"
-        "         rand   (random insert order)\n",
+        "  MODE = seq      (sequential search, no locks)\n"
+        "         cg       (coarse-grained global mutex)\n"
+        "         rwlock   (global RW-lock, readers concurrent)\n"
+        "         ideal    (parallel search, read-only, no locks)\n"
+        "         handover (hand-over-hand locking)\n"
+        "  TREE = bal      (default, perfectly balanced)\n"
+        "         seq      (sequential inserts 0..N_INIT-1, unbalanced)\n"
+        "         rand     (random insert order)\n",
         prog);
 }
 
@@ -107,6 +109,27 @@ static void *worker_ideal(void *arg)
     return NULL;
 }
 
+/* Worker for hand-over-hand locking multithreaded search */
+static void *worker_handover(void *arg)
+{
+    thread_arg_t *a = (thread_arg_t *)arg;
+    long local_found = 0;
+
+    papi_start_counters();
+
+    for (long i = 0; i < a->count; ++i) {
+        int key = a->keys[a->start + i];
+        if (bst_handover_search((bst_handover_t *)a->tree, key)) {
+            local_found++;
+        }
+    }
+
+    papi_stop_and_accum();
+
+    a->found = local_found;
+    return NULL;
+}
+
 /* Parse "R/I/D" into three ints. Returns 0 on success, nonzero on parse error. */
 static int parse_mix(const char *s, int *r, int *i, int *d) {
     if (!s) return 1;
@@ -119,18 +142,21 @@ static int parse_mix(const char *s, int *r, int *i, int *d) {
    totals stay honest without claiming mode-specific delete behavior. */
 static int run_op(const char *mode, bst_t *tree, const wl_op_t *op) {
     if (op->kind == WL_OP_SEARCH) {
-        if (strcmp(mode, "cg") == 0)     return bst_search_cg(tree, op->key);
-        if (strcmp(mode, "rwlock") == 0) return bst_search_rwlock(tree, op->key);
+        if (strcmp(mode, "cg") == 0)       return bst_search_cg(tree, op->key);
+        if (strcmp(mode, "rwlock") == 0)   return bst_search_rwlock(tree, op->key);
+        if (strcmp(mode, "handover") == 0) return bst_handover_search((bst_handover_t *)tree, op->key);
         return bst_search_seq(tree, op->key);
     }
     if (op->kind == WL_OP_INSERT) {
-        if (strcmp(mode, "cg") == 0)     { bst_insert_cg(tree, op->key); return 0; }
-        if (strcmp(mode, "rwlock") == 0) { bst_insert_rwlock(tree, op->key); return 0; }
-        bst_insert_seq(tree, op->key);   return 0;
+        if (strcmp(mode, "cg") == 0)       { bst_insert_cg(tree, op->key); return 0; }
+        if (strcmp(mode, "rwlock") == 0)   { bst_insert_rwlock(tree, op->key); return 0; }
+        if (strcmp(mode, "handover") == 0) { bst_handover_insert((bst_handover_t *)tree, op->key); return 0; }
+        bst_insert_seq(tree, op->key);     return 0;
     }
     /* WL_OP_DELETE: no BST primitive available; treat as a search. */
-    if (strcmp(mode, "cg") == 0)     return bst_search_cg(tree, op->key);
-    if (strcmp(mode, "rwlock") == 0) return bst_search_rwlock(tree, op->key);
+    if (strcmp(mode, "cg") == 0)       return bst_search_cg(tree, op->key);
+    if (strcmp(mode, "rwlock") == 0)   return bst_search_rwlock(tree, op->key);
+    if (strcmp(mode, "handover") == 0) return bst_handover_search((bst_handover_t *)tree, op->key);
     return bst_search_seq(tree, op->key);
 }
 
@@ -309,10 +335,11 @@ int main(int argc, char **argv)
         printf("Total found: %ld\n", found);
         printf("Elapsed time: %.6f seconds\n", t1 - t0);
     }
-    /* --- Multithreaded modes: cg, rwlock, ideal --- */
+    /* --- Multithreaded modes: cg, rwlock, ideal, handover --- */
     else if (strcmp(mode, "cg") == 0 ||
              strcmp(mode, "rwlock") == 0 ||
-             strcmp(mode, "ideal") == 0)
+             strcmp(mode, "ideal") == 0 ||
+             strcmp(mode, "handover") == 0)
     {
         pthread_t    *threads = (pthread_t *)malloc(sizeof(pthread_t) * (size_t)nthreads);
         thread_arg_t *args    = (thread_arg_t *)malloc(sizeof(thread_arg_t) * (size_t)nthreads);
@@ -348,6 +375,8 @@ int main(int argc, char **argv)
                 fn = worker_cg;
             } else if (strcmp(mode, "rwlock") == 0) {
                 fn = worker_rwlock;
+            } else if (strcmp(mode, "handover") == 0) {
+                fn = worker_handover;
             } else { /* ideal */
                 fn = worker_ideal;
             }
